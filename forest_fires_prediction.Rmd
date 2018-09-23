@@ -5,10 +5,18 @@ date: "23 September 2018"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r options, echo = F}
 knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+These are the libraries and options I will be using throughout the project
+
+```{r setup, message=FALSE, warning=FALSE, include=T}
+# random seed
 set.seed(123)
 
+# libraries
 library(tidyverse)
 library(corrplot)
 library(caret)
@@ -222,8 +230,10 @@ actual_vs_pred %>%
 
 ## Potential Model Developments
 
-It looks like there are some external variables afffecting the forest fires. For example, the fire breaks in each area, the type of tree, whether or not there had been a fire in the area recently. By adding to this dataset we could probabaly gain more predictive power 
+It looks like there are some external variables afffecting the forest fires. For example, the fire breaks in each area, the type of tree, whether or not there had been a fire in the area recently. By adding to this dataset we could probabaly gain more predictive power.
 
-We could look at variable interactions to see if we can pull any more explaining power out of them. For example, perhpas the windspeed only becomes relevant on dry days, or perhaps on hot days the soil type is a stronger driver of area burned
+We could look at variable interactions to see if we can pull any more explaining power out of them. For example, perhpas the windspeed only becomes relevant on dry days, or perhaps on hot days the soil type is a stronger driver of area burned.
 
-We could go further with the random forest model and try hyperparameter tuning using a grid search to tune the number of trees and depth of each tree
+We could also try training the model on only the datapoints that have a non zero value for area burned.
+
+We could go further with the random forest model and try hyperparameter tuning using a grid search to tune the number of trees and depth of each tree.

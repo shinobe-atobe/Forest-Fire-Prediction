@@ -129,6 +129,15 @@ $(document).ready(function () {
 </div>
 
 
+<p>These are the libraries and options I will be using throughout the project</p>
+<pre class="r"><code># random seed
+set.seed(123)
+
+# libraries
+library(tidyverse)
+library(corrplot)
+library(caret)
+library(ranger)</code></pre>
 <div id="data-exploration" class="section level2">
 <h2>Data Exploration</h2>
 <div id="structure" class="section level3">
@@ -322,9 +331,10 @@ ggplot(actual_vs_pred, aes(x = actual, y = pred)) +
 </div>
 <div id="potential-model-developments" class="section level2">
 <h2>Potential Model Developments</h2>
-<p>It looks like there are some external variables afffecting the forest fires. For example, the fire breaks in each area, the type of tree, whether or not there had been a fire in the area recently. By adding to this dataset we could probabaly gain more predictive power</p>
-<p>We could look at variable interactions to see if we can pull any more explaining power out of them. For example, perhpas the windspeed only becomes relevant on dry days, or perhaps on hot days the soil type is a stronger driver of area burned</p>
-<p>We could go further with the random forest model and try hyperparameter tuning using a grid search to tune the number of trees and depth of each tree</p>
+<p>It looks like there are some external variables afffecting the forest fires. For example, the fire breaks in each area, the type of tree, whether or not there had been a fire in the area recently. By adding to this dataset we could probabaly gain more predictive power.</p>
+<p>We could look at variable interactions to see if we can pull any more explaining power out of them. For example, perhpas the windspeed only becomes relevant on dry days, or perhaps on hot days the soil type is a stronger driver of area burned.</p>
+<p>We could also try training the model on only the datapoints that have a non zero value for area burned.</p>
+<p>We could go further with the random forest model and try hyperparameter tuning using a grid search to tune the number of trees and depth of each tree.</p>
 </div>
 
 
