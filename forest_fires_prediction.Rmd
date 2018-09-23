@@ -1,0 +1,229 @@
+---
+title: "Bet365 Forest Fire Prediction"
+author: "Philip Nash"
+date: "23 September 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
+
+library(tidyverse)
+library(corrplot)
+library(caret)
+library(ranger)
+
+```
+
+```{r explaination of variables, echo = F}
+
+# 1. X - x-axis spatial coordinate within the Montesinho park map: 1 to 9
+# 2. Y - y-axis spatial coordinate within the Montesinho park map: 2 to 9
+# 3. month - month of the year: "jan" to "dec" 
+# 4. day - day of the week: "mon" to "sun"
+# 5. FFMC - FFMC index from the FWI system: 18.7 to 96.20
+# 6. DMC - DMC index from the FWI system: 1.1 to 291.3 
+# 7. DC - DC index from the FWI system: 7.9 to 860.6 
+# 8. ISI - ISI index from the FWI system: 0.0 to 56.10
+# 9. temp - temperature in Celsius degrees: 2.2 to 33.30
+# 10. RH - relative humidity in %: 15.0 to 100
+# 11. wind - wind speed in km/h: 0.40 to 9.40 
+# 12. rain - outside rain in mm/m2 : 0.0 to 6.4 
+# 13. area - the burned area of the forest (in ha): 0.00 to 1090.84 
+# (this output variable is very skewed towards 0.0, thus it may make
+#   sense to model with the logarithm transform). 
+# ----
+```
+
+## Data Exploration
+
+### Structure
+
+There are 2 factor variables, the rest are numeric
+
+```{r read in data}
+# read data
+ff <- read.csv("forestfires.csv")
+
+str(ff)
+```
+
+
+We should put the months and day variable levels in the right order - this will be useful later for plotting
+
+```{r reorder, echo = T, eval = T}
+ff <- ff %>%
+  mutate(month = fct_relevel(month, tolower(month.abb)),
+         day = fct_relevel(day, "mon", "tue", "wed", "thu", "fri", "sat", "sun"))
+```
+
+The distribution of each of the nummeric variables, some are normal. Hoverver `Area` is highly skewed. We may wish to log this if performing regression
+
+```{r distribution}
+ff %>% 
+  select(-month, -day) %>%
+  gather(variable, value) %>%
+  ggplot(aes(x  = value, fill = variable)) + 
+   geom_histogram(bins = 30) + 
+   facet_wrap(~variable, scales = "free") +
+   theme(legend.position = "none") +
+   ggtitle("Distrbution of each of the variables")
+```
+
+There seem to be 4 or 5 major outliers in the data
+```{r boxplots}
+ff %>% 
+  select(-month, -day) %>%
+  mutate_all(scale) %>%
+  gather(variable, value, 1:11) %>% 
+  ggplot(aes(x = variable, y = value)) + 
+   geom_boxplot()
+```
+
+### Corrrelation
+
+A few variables are correlated - especially the pairs DC<>DMC and RH<>Temp. But it doesn not look like there are any variables that correlate highly with `Area` 
+```{r corrplot}
+ff %>%
+  select(-day, -month) %>%
+  cor() %>%
+  corrplot(method = "ellipse")
+# check out ggally ggpairs
+```
+
+Let's take a closer look at those
+
+`DC` and `DMC` - each of these variables can be explained by the other and `month`
+
+```{r pairs}
+# Should drop DMC if running regression
+ff %>% 
+  ggplot(aes(x = DC, y = DMC)) +
+   geom_point(aes(col = month))
+```
+
+As temperature increases the humidity tends to be lower
+
+```{r temp_pairs}
+# should drop RH if running regression
+ff %>% 
+  ggplot(aes(x = RH, y = temp)) +
+  geom_point(aes(col = month))
+```
+
+Fires are slightly more common at weekends.. 
+```{r weekends} 
+ff %>% 
+  select(day) %>%
+  ggplot(aes(x = day, fill = day)) + 
+  geom_bar() + 
+  theme(legend.position = "none") + 
+  ggtitle("Fire frequency by day of week")
+```
+
+Here the temperature range is plotted as vertical bars - the increase in fire frequency in August and September cannot be explained by temperature alone
+```{r months}
+# fires are much more common in august and september - and this isn't just to do with the weather
+ff %>% 
+  select(month, temp) %>%
+   ggplot(aes(x = month, fill = month)) + 
+   geom_bar() + 
+   geom_line(aes(y = temp)) + 
+   theme(legend.position = "none") + 
+   ggtitle("Fire frequency by month (lines are the rage of temeratures through the month)")
+
+```
+
+### Spatial Analysis
+
+When charted, looks like the centre of the forested area is most likley to be burned, with a small area to the north east
+
+```{r map}
+ff %>% 
+  ggplot(aes(x = X, y = Y)) + geom_tile(alpha = 0.2)
+```
+
+Each of the variuables seem to vary randomly over the entire area. For example we dont seem to see a high temperature or humidity concentrated in a particualr place
+
+```{r variables_map}
+ff %>% 
+  select(-day, -month) %>%
+  group_by(X, Y) %>%
+  summarize_all(mean) %>%
+  mutate_at(vars(-X, -Y), scale) %>%
+  gather(variable, value, 3:11) %>%
+  ggplot(aes(x = X, y = Y)) + 
+    geom_tile(aes(fill = value)) +
+    facet_wrap(~variable)
+```
+
+## Model 
+
+Let's start with a simple Linear Model
+
+We can remove `RH` and `DMC` variables becase they are correlated with `Temp` and `DC` respectively 
+
+We shoudl also transform the `area` variable so it is less skewed
+
+The factor vars `month` and `day` will be automatically one hot encoded
+
+```{r model data}
+ff_model_data <- ff %>%
+   mutate(area_log = ifelse(area == 0,0,log(area))) %>%
+   select(-RH, -DMC, -area)
+  
+```
+
+Let's run a simple model on the full dataset. Only one variable comes out significant (`temp`) and the rsquared is very poor
+
+This may be due to the mild correlation between the other variables. Maybe regression is not the model to use
+```{r model}
+lm(area_log ~ . , data = ff_model_data) %>% summary()
+```
+
+Small sample so lets train using cross validation
+
+```{r split }
+split <- createDataPartition(ff_model_data$area_log, p = 0.75, list = F)
+
+ff_train <- ff_model_data[split, ]
+ff_test <- ff_model_data[-split,]
+```
+
+```{r cross validation}
+train_control <- trainControl(method = 'repeatedcv',
+                              number = 10,
+                              repeats = 3)
+
+model <- train(area_log ~ ., 
+      data = ff_train,
+      trControl = train_control,
+      method = "ranger"
+)
+```
+Summary of the model. The random forest model still does not look to be a good predictor of forest fires. There is likely to be some external variables
+```{r model summary}
+predicted <- predict(model, select(ff_test, -area_log))
+
+actual_vs_pred <- data.frame(actual = ff_test$area_log, pred = predicted)
+
+ggplot(actual_vs_pred, aes(x = actual, y = pred)) + 
+  geom_point() + xlim(0,7.5) +ylim(0,7.5)
+
+```
+The model can be evaluated using RMSE - the smaller the better 
+
+```{r RMSE}
+actual_vs_pred %>%
+  mutate(sq_error = (actual - pred)^2) %>%
+  summarise(RMSE = sqrt(sum(sq_error)))
+```
+
+## Potential Model Developments
+
+It looks like there are some external variables afffecting the forest fires. For example, the fire breaks in each area, the type of tree, whether or not there had been a fire in the area recently. By adding to this dataset we could probabaly gain more predictive power 
+
+We could look at variable interactions to see if we can pull any more explaining power out of them. For example, perhpas the windspeed only becomes relevant on dry days, or perhaps on hot days the soil type is a stronger driver of area burned
+
+We could go further with the random forest model and try hyperparameter tuning using a grid search to tune the number of trees and depth of each tree
